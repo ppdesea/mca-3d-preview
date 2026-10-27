@@ -1,0 +1,56 @@
+name: pages
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "7 * * * *"
+  workflow_dispatch:
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+  actions: write
+concurrency:
+  group: pages
+  cancel-in-progress: false
+env:
+  EXPIRES_AT: "2026-10-30T01:30:00Z"
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: pick
+        run: |
+          now=$(date -u +%s); exp=$(date -u -d "$EXPIRES_AT" +%s)
+          if [ "$now" -ge "$exp" ]; then mode=expired; else mode=live; fi
+          if [ "${{ github.event_name }}" = "schedule" ] && [ "$mode" = "live" ]; then run=no; else run=yes; fi
+          echo "mode=$mode" >> "$GITHUB_OUTPUT"; echo "run=$run" >> "$GITHUB_OUTPUT"; echo "mode=$mode run=$run"
+      - name: stage site
+        if: steps.pick.outputs.run == 'yes'
+        env:
+          PREVIEW_KEY: ${{ secrets.PREVIEW_KEY }}
+        run: |
+          mkdir -p _site
+          if [ "${{ steps.pick.outputs.mode }}" = "live" ]; then
+            openssl enc -d -aes-256-cbc -md sha256 -pass env:PREVIEW_KEY -in page.html.enc -out _site/index.html 2>/dev/null
+          else
+            cp expired.html _site/index.html
+          fi
+          test -s _site/index.html
+      - uses: actions/upload-pages-artifact@v3
+        if: steps.pick.outputs.run == 'yes'
+        with:
+          path: _site
+          retention-days: 1
+      - id: deploy
+        if: steps.pick.outputs.run == 'yes'
+        uses: actions/deploy-pages@v4
+      - name: stop hourly check after expiry
+        if: steps.pick.outputs.mode == 'expired'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow disable pages.yml -R "$GITHUB_REPOSITORY"
