@@ -14,7 +14,7 @@ concurrency:
   group: pages
   cancel-in-progress: false
 env:
-  EXPIRES_AT: "2026-10-30T01:30:00Z"
+  EXPIRES_AT: "2026-11-12T16:00:00Z"
 jobs:
   deploy:
     runs-on: ubuntu-latest
